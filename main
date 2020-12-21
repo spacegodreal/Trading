@@ -1,0 +1,235 @@
+from binance.client import Client
+import requests
+import pandas as pd
+import telebot
+import time
+from binance.enums import *
+import threading
+import math
+from datetime import datetime
+
+bot=telebot.TeleBot(), parse_mode=None)
+@bot.message_handler(commands=['help','ticker'])
+
+def help_command(message):
+    keyboard = telebot.types.InlineKeyboardMarkup()
+    keyboard.row(telebot.types.InlineKeyboardButton('Data', callback_data='answer3'), telebot.types.InlineKeyboardButton('Trade History', callback_data='answer4'))
+    keyboard.row(telebot.types.InlineKeyboardButton('Current Trade', callback_data='answer1'))
+    keyboard.row(telebot.types.InlineKeyboardButton('Balance',callback_data='answer5'))
+
+    bot.send_message(
+        message.chat.id,'click for info',
+        reply_markup=keyboard
+    )
+
+@bot.callback_query_handler(func=lambda call:True)
+def query_handler(call):
+    bot.answer_callback_query(callback_query_id=call.id)
+    answer1='is Buy?', str(side),'at:', str(price), 'amount:', str(amount), str(time1)
+    answer3='24h transfer value change %:', str(tx_val_change),'24h pricechange %:', str(price_change), 'current price:', str(current_price)
+    answer5='ETH balance:', str(balanceETH), 'USDT balance:',str(balanceUSDT)
+    answer4= trade_history
+    if call.data =='answer3':
+        bot.send_message(call.message.chat.id,'\n'.join(answer3))
+
+    elif call.data =='answer5':
+        bot.send_message(call.message.chat.id,'\n'.join (answer5))
+
+    elif call.data=='answer1':
+        bot.send_message(call.message.chat.id, '\n'.join (answer1))
+
+    elif call.data=='answer4':
+        bot.send_message(call.message.chat.id, '\n'.join (answer4))
+
+
+pd.set_option('display.width', 400)
+pd.set_option('display.max_columns', 10)
+
+api_key=
+api_secret=
+client = (Client(api_key, api_secret))
+
+pricechange_threshold=float(1.0)
+tx_val_threshold=float(10)
+tp_threshold_buy=float(1.002)
+tp_threshold_sell=float(0.0098)
+
+tx_val = requests.get('https://community-api.coinmetrics.io/v4/timeseries/asset-metrics?assets=eth&metrics=PriceUSD,TxTfrValNtv&frequency=1d&start_time=2020-08-15T00:00:00.000000000Z&pretty=true&api_key=xxx').json()
+
+#tx val can be none? -3 and -2 (check values)//set tp levels
+
+tx_val_before = float(tx_val['data'][-2]['TxTfrValNtv'])
+tx_val_after = float(tx_val['data'][-1]['TxTfrValNtv'])
+tx_val_change = float(100-(tx_val_before/tx_val_after*100))
+price_before=float(tx_val['data'][-2]['PriceUSD'])
+price_after=float(tx_val['data'][-1]['PriceUSD'])
+price_change=float(100-(price_before/price_after*100))
+
+ticker=client.get_ticker(symbol='ETHUSDT')
+balanceETH=float(client.get_asset_balance(asset='ETH')['free'])
+balanceETH1=math.floor(balanceETH * 100000) / 100000.0
+balanceUSDT=client.get_asset_balance(asset='USDT')['free']
+current_price = client.get_recent_trades(symbol='ETHUSDT')[-1]['price']
+side=client.get_margin_trades(symbol='ETHUSDT')[-1]['isBuyer']
+price=client.get_margin_trades(symbol='ETHUSDT')[-1]['price']
+time2=client.get_margin_trades(symbol='ETHUSDT')[-1]['time']
+time1=datetime.fromtimestamp(int(time2) / 1000)
+amount=client.get_margin_trades(symbol='ETHUSDT')[-1]['qty']
+trade_history={'is buy': [], 'time': []}
+length = client.get_margin_trades(symbol='ETHUSDT')
+
+def updater():
+    while True:
+        time.sleep(10)
+        global ticker
+        ticker=client.get_ticker(symbol='ETHUSDT')
+        global balanceETH
+        balanceETH=float(client.get_asset_balance(asset='ETH')['free'])
+
+        global balanceETH1
+        balanceETH1=math.floor(balanceETH * 100000) / 100000.0
+
+        global balanceUSDT
+        balanceUSDT=client.get_asset_balance(asset='USDT')['free']
+
+        global current_price
+        current_price=client.get_recent_trades(symbol='ETHUSDT')[-1]['price']
+
+        global side
+        side = client.get_margin_trades(symbol='ETHUSDT')[-1]['isBuyer']
+
+        global price
+        price=client.get_margin_trades(symbol='ETHUSDT')[-1]['price']
+
+        global time2
+        time2=client.get_margin_trades(symbol='ETHUSDT')[-1]['time']
+
+        global time1
+        time1=datetime.fromtimestamp(int(time2) / 1000)
+
+        global amount
+        amount=client.get_margin_trades(symbol='ETHUSDT')[-1]['qty']
+
+        global trade_history
+        trade_history={'is buy': [], 'time': []}
+
+        global length
+        length = client.get_margin_trades(symbol='ETHUSDT')
+
+
+
+t2 = threading.Thread(target=updater)
+t2.start()
+
+
+for i in range (len(length)):
+
+    buy = client.get_margin_trades(symbol='ETHUSDT')[i]['price']
+    print(buy)
+    trade_history['is buy'].append(buy)
+
+details = client.get_max_margin_loan(asset='ETH')['amount']
+print(details)
+
+
+
+def trading():
+    while True:
+        time.sleep(1000)
+        if tx_val['data'][-1]['TxTfrValNtv'] is not None:
+            tx_val_after1 = float(tx_val['data'][-1]['TxTfrValNtv'])
+            time.sleep(100)
+            tx_val_before1 = float(tx_val['data'][-2]['TxTfrValNtv'])
+            if tx_val_after1 != tx_val_before1:
+                tx_val_change1 = float(100 - (tx_val_before1 / tx_val_after1 * 100))
+                price_before1 = float(tx_val['data'][-2]['PriceUSD'])
+                price_after1 = float(tx_val['data'][-1]['PriceUSD'])
+                price_change1 = float(100 - (price_before1 / price_after1 * 100))
+                is_buy = client.get_margin_trades(symbol='ETHUSDT')[-1]['isBuyer']
+                order_empty =client.get_open_margin_orders(symbol='ETHUSDT')
+
+                if tx_val_change1 > tx_val_threshold and price_change1 <- pricechange_threshold and is_buy==False:
+
+                    if len(order_empty) !=0:
+                        orderid=client.get_open_margin_orders(symbol='ETHUSDT')[-1]['orderId']
+                        print('orderid', orderid)
+                        result = client.cancel_margin_order(symbol='ETHUSDT', orderId=orderid)
+                        print('cancel tp order', result)
+
+                    repay_borrowed_amount_ETH= float(client.get_margin_account()['userAssets'][-9]['borrowed'])
+                    print('repay borrowed amount', repay_borrowed_amount_ETH)
+                    repay_borrowed_amount_ETH_convert =math.floor (repay_borrowed_amount_ETH*100000)/100000.0
+                    print('repay converted borrow amount', repay_borrowed_amount_ETH_convert)
+                    order_repay = client.create_margin_order(symbol='ETHUSDT',side=SIDE_BUY, type=ORDER_TYPE_MARKET, timeInForce=TIME_IN_FORCE_GTC, quantity=repay_borrowed_amount_ETH_convert)
+                    repay_borrowed = client.repay_margin_loan(asset='ETH', amount=repay_borrowed_amount_ETH)
+                    print('repay borrowed', order_repay, repay_borrowed)
+                    max_borrow_amount_USDT = client.get_max_margin_loan(asset='USDT')['amount']
+                    print('max borrow amount', max_borrow_amount_USDT)
+                    create_loan_buy = client.create_margin_loan(asset='USDT', amount=max_borrow_amount_USDT)
+                    print('create loan', create_loan_buy)
+                    borrow_converted_buy_USDT = math.floor (create_loan_buy*100000)/100000.0
+                    buy_order = client.create_margin_order(symbol='ETHUSDT',side=SIDE_BUY, type=ORDER_TYPE_MARKET, timeInForce=TIME_IN_FORCE_GTC, quantity=borrow_converted_buy_USDT)
+                    print('set new buy order', buy_order)
+                    entryprice_buy = client.get_margin_trades(symbol='ETHUSDT')[-1]['price']
+                    print('buy entry ',entryprice_buy)
+                    tp_price_sell = round(entryprice_buy * float(tp_threshold_buy), 2)
+                    print('tp level', tp_price_sell)
+                    order_tp_buy = client.create_margin_order( symbol='ETHUSDT', side=SIDE_SELL, type=ORDER_TYPE_LIMIT, timeInForce=TIME_IN_FORCE_GTC, quantity=borrow_converted_buy_USDT, price=tp_price_sell)
+                    print('set tp order', order_tp_buy)
+                    time.sleep(10000)
+
+                elif tx_val_change1 <- tx_val_threshold and price_change1 > pricechange_threshold and is_buy==True:
+
+                    if len(order_empty) !=0:
+                        orderid=client.get_open_margin_orders(symbol='ETHUSDT')[-1]['orderId']
+                        print('orderid', orderid)
+                        result = client.cancel_margin_order(symbol='ETHUSDT', orderId=orderid)
+                        print('cancel tp order', result)
+
+                    repay_borrowed_amount_USDT = float(client.get_margin_account()['userAssets'][-39]['borrowed'])
+                    print('repay borrowed amount', repay_borrowed_amount_USDT)
+                    repay_borrowed_amount_USDT_convert = math.floor(repay_borrowed_amount_USDT * 100000) / 100000.0
+                    print('repay converted borrow amount', repay_borrowed_amount_USDT_convert)
+                    order_repay = client.create_margin_order(symbol='ETHUSDT', side=SIDE_SELL, type=ORDER_TYPE_MARKET, timeInForce=TIME_IN_FORCE_GTC, quantity=repay_borrowed_amount_USDT_convert)
+                    repay_borrowed = client.repay_margin_loan(asset='USDT', amount=repay_borrowed_amount_USDT)
+                    print('repay borrowed', order_repay, repay_borrowed)
+                    print('repay borrowed', order_repay)
+                    max_borrow_amount_ETH = client.get_max_margin_loan(asset='ETH')['amount']
+                    print('max borrow amount', max_borrow_amount_ETH)
+                    create_loan_sell = client.create_margin_loan(asset='ETH', amount=max_borrow_amount_ETH)
+                    print('create loan', create_loan_sell)
+                    borrow_converted_sell_ETH = math.floor(create_loan_sell * 100000) / 100000.0
+                    buy_order = client.create_margin_order(symbol='ETHUSDT', side=SIDE_SELL, type=ORDER_TYPE_MARKET,timeInForce=TIME_IN_FORCE_GTC, quantity=borrow_converted_sell_ETH)
+                    print('set new sell order', buy_order)
+                    entryprice_sell = client.get_margin_trades(symbol='ETHUSDT')[-1]['price']
+                    print('buy entry ', entryprice_sell)
+                    tp_price_buy = round(entryprice_sell * float(tp_threshold_sell), 2)
+                    print('tp level', tp_price_buy)
+                    order_tp_sell = client.create_margin_order(symbol='ETHUSDT', side=SIDE_BUY, type=ORDER_TYPE_LIMIT, timeInForce=TIME_IN_FORCE_GTC, quantity=borrow_converted_sell_ETH, price=tp_price_buy)
+                    print('set tp order', order_tp_sell)
+                    time.sleep(100)
+                else:
+                    print('no action')
+
+
+
+
+details=client.get_max_margin_loan(asset='USDT')
+trades = client.get_margin_trades(symbol='ETHUSDT')
+
+orders=client.get_open_orders(symbol='ETHUSDT')
+print(trades)
+
+
+t1 = threading.Thread(target=trading)
+t1.start()
+
+
+print(price_change)
+
+print(tx_val_change)
+print(balanceETH1)
+print(current_price)
+print(price_change)
+
+bot.polling()
